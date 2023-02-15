@@ -1,0 +1,15 @@
+# Configure dhcp for local dns sub domain
+domain={{ local_zone }},{{ local_dhcp_subnet }},local
+#  define interfaces to listen on
+{% if localdns_interfaces is defined and localdns_interfaces | d([], true) | length > 0 %}
+{% for ldif in localdns_interfaces %}
+interface={{ ldif }}
+{% endfor %}
+{% endif %}
+
+# Configure DHCP options if appropriate
+{% if config_dhcp_options is defined and config_dhcp_options | bool %}
+dhcp-authoritative
+dhcp-option=1,{{ netmask }}
+dhcp-option=3,{{ local_dhcp_subnet }}
+dhcp-option=6,{{ local_dns_host_ip }}

@@ -1,0 +1,100 @@
+---
+- name: '{{ ansible_name_module }} | shell:date | Date CMD'
+  shell: "date '+%Y%m%d%H'"
+  register: date_YmdH
+
+- name: '{{ ansible_name_module }} | Register date %Y%m%d%H'
+  set_fact:
+    db_time: "{{ date_YmdH.stdout }}"
+
+- name: '{{ ansible_name_module }} | template | Build CoreDNS config.yml'
+  template:
+    src: '{{ item.src }}'
+    dest: '{{ item.dest }}'
+    mode: '{{ item.mode }}'
+  loop:
+    - { mode: '0655', src: "templates/coredns-config.json.j2", dest: "{{ coredns_container_config_dir }}/config.json"}
+    - { mode: '0655', src: "templates/coredns-zone.db.j2", dest: "{{ coredns_container_config_dir }}/core.db"}
+
+- name: '{{ ansible_name_module }} | command:which | Check if podman is installed'
+  shell: >
+    which podman
+  ignore_errors: yes
+  register: podman_binary
+
+- name: '{{ ansible_name_module }} | shell:podman | Retrieve coredns container name if running'
+  shell: >
+    {{ podman_binary.stdout }} ps | grep coredns | head -1 | awk '{print $(NF)}'
+  register: running_container
+
+- name: '{{ ansible_name_module }} | shell:podman | Start coredns container if not running'
+  containers.podman.podman_container:
+    name: "{{ coredns_container_name }}"
+    image: "{{ coredns_container_image }}"
+    state: started
+    recreate: yes
+    volume:
+      - "{{ coredns_container_config_dir }}/config.json:/CoreFile"
+      - "{{ coredns_container_config_dir }}/core.db:/root/core.db"
+    publish:
+      - 53:53/tcp
+      - 53:53/udp
+      - 5353:5353/tcp
+      - 5353:5353/udp
+    generate_systemd:
+      path: /tmp/
+      restart_policy: always
+      time: 120
+      names: true
+      container_prefix: coredns
+  when:
+    - running_container is defined
+    - running_container.rc is defined
+    - running_container.rc == 0
+    - running_container.stderr is defined
+    - running_container.stderr == ''
+  register: coredns_container_started
+
+- name: Print Coredns container
+  debug:
+    var: coredns_container_started
+
+- name: '{{ ansible_name_module }} | shell:podman | Stop coredns container'
+  containers.podman.podman_container:
+    name: "{{ coredns_container_name }}"
+    state: stopped
+
+- name: '{{ ansible_name_module }} | find | locate the coredns systemd file'
+  find:
+    paths: /tmp/
+    patterns: 'coredns*'
+  register: coredns_systemd_file
+
+- name: Print Coredns systemd file 
+  debug:
+    var: coredns_systemd_file
+
+- name: '{{ ansible_name_module }} | copy | Copy coredns systemd file into place '
+  become: yes
+  copy:
+    src: "{{ coredns_systemd_file.files[0].path }}"
+    dest: /etc/systemd/system/{{ coredns_systemd_file.files[0].path | basename }}
+    force: yes
+    mode: '0755'
+
+- name: '{{ ansible_name_module }} | systemd:daemond_reload | Reload systemd'
+  become: yes
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: '{{ ansible_name_module }} | systemd:restart | Restart service '
+  become: yes
+  ansible.builtin.systemd:
+    name: "{{ (coredns_systemd_file.files[0].path | basename).split('.service')[0] }}"
+    state: started
+    enabled: yes
+
+- name: '{{ ansible_name_module }} | shell:podman | Retrieve coredns container name if running'
+  shell: >
+    {{ podman_binary.stdout }} container ls
+  register: running_container_systemd

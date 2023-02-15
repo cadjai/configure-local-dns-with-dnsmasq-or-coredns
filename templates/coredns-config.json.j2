@@ -1,0 +1,36 @@
+.:5353 {
+    bufsize 1232
+    hosts {
+        reload 0
+        fallthrough
+    }
+    forward . /etc/resolv.conf {
+              policy sequential
+    } 
+    log
+    errors
+}
+
+{{ coredns_zone }}:5353 {
+    file /root/core.db
+    log
+    errors
+}
+.:53 {
+    bufsize 1232
+    hosts {
+        reload 0
+        fallthrough
+    }
+    forward . /etc/resolv.conf {
+              policy sequential
+    } 
+    log
+    errors
+}
+
+{{ coredns_zone }}:53 {
+    file /root/core.db
+    log
+    errors
+}

@@ -1,0 +1,34 @@
+#  define interfaces to listen on
+{% if localdns_interfaces is defined and localdns_interfaces | d([], true) | length > 0 %}
+{% for ldif in localdns_interfaces %}
+interface={{ ldif }}
+{% endfor %}
+{% endif %}
+
+# Configure subdomain zone dns in dnsmaq
+local=/{{ local_zone }}/
+domain={{ local_zone }}
+### defined needed dns entries
+{% if config_localdns is defined and config_localdns | bool %}
+address=/registry.{{ local_zone }}/{{ local_dns_host_ip }} 
+address=/haproxy.{{ local_zone }}/{{ local_dns_host_ip }} 
+address=/lb.{{ local_zone }}/{{ local_dns_host_ip }} 
+address=/api.{{ local_zone }}/{{ local_dns_host_ip }} 
+address=/api-int.{{ local_zone }}/{{ local_dns_host_ip }} 
+address=/.apps.{{ local_zone }}/{{ local_dns_host_ip }} 
+
+ptr-record={{ local_dns_host_ip.split('.') | reverse | list | join('.') }}.in-addr.arpa,registry.{{ local_zone }} 
+ptr-record={{ local_dns_host_ip.split('.') | reverse | list | join('.') }}.in-addr.arpa,haproxy.{{ local_zone }} 
+ptr-record={{ local_dns_host_ip.split('.') | reverse | list | join('.') }}.in-addr.arpa,lb.{{ local_zone }} 
+ptr-record={{ local_dns_host_ip.split('.') | reverse | list | join('.') }}.in-addr.arpa,api.{{ local_zone }} 
+ptr-record={{ local_dns_host_ip.split('.') | reverse | list | join('.') }}.in-addr.arpa,api-int.{{ local_zone }} 
+
+{% if use_static_ips is defined and use_static_ips | bool and masters | default([], true) | length > 0 %}
+{% for item in masters %}
+address=/{{ master_instance_prefix }}{{ loop.index0 }}.{{ local_zone }}/{{ item }}
+
+ptr-record={{ item.split('.') | reverse | list | join('.') }}.in-addr.arpa,{{ master_instance_prefix }}{{ loop.index0 }}.{{ local_zone }}
+{% endfor %}
+{% endif %}
+{% endif %}
+

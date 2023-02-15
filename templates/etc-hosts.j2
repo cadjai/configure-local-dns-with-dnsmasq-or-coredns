@@ -1,0 +1,7 @@
+127.0.0.1   localhost.localdomain localhost 
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+{% if additional_hosts is defined and additional_hosts | d([], true) | length > 0 %}
+{% for host in additional_hosts %}
+{{ host.ip }}   {{ host.dns }}
+{% endfor %}
+{% endif %}

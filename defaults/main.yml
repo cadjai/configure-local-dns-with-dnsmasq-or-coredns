@@ -1,0 +1,8 @@
+---
+# defaults file for configure-local-dns-dnsmasq+coredns
+ansible_name_module: 'Local DNS config with dnsmasq or coredns'
+config_localdns: 'true'
+config_hosts: 'true'
+coredns_container_name: 'coredns'
+coredns_container_image: 'docker.io/coredns/coredns'
+coredns_container_config_dir: '{{ ansible_env.HOME }}'

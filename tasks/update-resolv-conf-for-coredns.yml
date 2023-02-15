@@ -1,0 +1,139 @@
+---
+- name: '{{ ansible_name_module }} | command:which | Check if podman is installed'
+  shell: >
+    which podman
+  ignore_errors: yes
+  register: podman_binary
+
+- name: '{{ ansible_name_module }} | shell:podman | Check if coredns container is running'
+  shell: >
+    {{ podman_binary.stdout }} ps | grep coredns | head -1 | awk '{print $1}' 
+  ignore_errors: yes
+  when:
+    - podman_binary is defined
+    - podman_binary.rc is defined
+    - podman_binary.rc == 0
+    - podman_binary.stdout is defined
+    - podman_binary.stdout != ''
+  register: coredns_container 
+
+- name: '{{ ansible_name_module }} | shell:podman | Retrieve coredns container name if running'
+  shell: >
+    {{ podman_binary.stdout }} ps | grep coredns | head -1 | awk '{print $(NF)}' 
+  ignore_errors: yes
+  when:
+    - coredns_container is defined
+    - coredns_container.rc is defined
+    - coredns_container.rc == 0
+    - coredns_container.stdout is defined
+    - coredns_container.stdout != ''
+  register: coredns_container_name 
+
+- name: '{{ ansible_name_module }} | shell:podman | Retrieve coredns container IP Address if running'
+  shell: >
+    {{ podman_binary.stdout }} inspect -f {% raw %}'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' {% endraw %} {{ coredns_container_name.stdout }} | awk '{print $1}'
+  ignore_errors: yes
+  when:
+    - coredns_container_name is defined
+    - coredns_container_name.rc is defined
+    - coredns_container_name.rc == 0
+    - coredns_container_name.stdout is defined
+    - coredns_container_name.stdout != ''
+  register: coredns_container_ipaddr 
+
+- name: '{{ ansible_name_module }} | command:which | check if dig is installed '
+  command: which dig 
+  ignore_errors: yes
+  failed_when:
+    - dig_binary_check.rc > 0
+    - "not 'no dig' in dig_binary_check.stderr"
+  register: dig_binary_check
+
+- name: '{{ ansible_name_module }} | shell:dig | Check DNS resolution within the coredns container if running'
+  shell: >
+    {{ dig_binary_check.stdout }} @{{ coredns_container_ipaddr.stdout }} -p 5353 registry.{{ coredns_zone }} | grep ANSWER | head -1 | awk '{print $7}' | cut -d ',' -f1
+  when:
+    - dig_binary_check is defined
+    - dig_binary_check.rc is defined
+    - dig_binary_check.rc == 0
+    - dig_binary_check.stdout is defined
+    - dig_binary_check.stdout != ''
+    - coredns_container_ipaddr is defined
+    - coredns_container_ipaddr.rc is defined
+    - coredns_container_ipaddr.rc == 0
+    - coredns_container_ipaddr.stdout is defined
+    - coredns_container_ipaddr.stdout != ''
+  register: dig_dns_check
+
+- name: '{{ ansible_name_module }} | find | Verify that the resolv.conf file exists'
+  find:
+    paths: /etc/
+    pattern: 'resolv.conf'
+    use_regex: yes
+    file_type: file
+  register: resolv_conf
+
+- name: '{{ ansible_name_module }} | command:grep | Check if the search domain is already present in resolv.conf'
+  command: grep {{ coredns_zone }} {{ resolv_conf.files[0].path }}
+  failed_when:
+    - search_domain_inresolvconf.rc > 1 
+    - not search_domain_inresolvconf.stderr == "" 
+  register: search_domain_inresolvconf
+
+- name: '{{ ansible_name_module }} | replace | Prepend the nameserver to the existing nameserver statement'
+  replace:
+    path: "{{ resolv_conf.files[0].path }}"
+    regexp: 'search '
+    replace: "search {{ coredns_zone }} " 
+    backup: yes
+  when:
+    - resolv_conf is defined
+    - resolv_conf.files is defined
+    - resolv_conf.files[0] is defined
+    - resolv_conf.files[0].path is defined
+    - not resolv_conf.files[0].path == "" 
+    - search_domain_inresolvconf is defined
+    - search_domain_inresolvconf.rc <= 1 
+    - search_domain_inresolvconf.stderr == "" 
+    - not coredns_zone in search_domain_inresolvconf.stdout
+    - coredns_container_ipaddr is defined
+    - coredns_container_ipaddr.rc is defined
+    - coredns_container_ipaddr.rc == 0
+    - coredns_container_ipaddr.stdout is defined
+    - coredns_container_ipaddr.stdout != ''
+  register: resolvconf_ns_update
+
+- name: '{{ ansible_name_module }} | lineinfile | Add nameserver line for the provided DNS server IP'
+  lineinfile:
+    path: "{{ resolv_conf.files[0].path }}"
+    insertafter: "^search"
+    line: "nameserver {{ coredns_container_ipaddr.stdout }}"
+    state: present
+    backup: yes
+  when:
+    - resolv_conf is defined
+    - resolv_conf.files is defined
+    - resolv_conf.files[0] is defined
+    - resolv_conf.files[0].path is defined
+    - not resolv_conf.files[0].path == "" 
+    - coredns_container_ipaddr is defined
+    - coredns_container_ipaddr.rc is defined
+    - coredns_container_ipaddr.rc == 0
+    - coredns_container_ipaddr.stdout is defined
+    - coredns_container_ipaddr.stdout != ''
+
+- name: '{{ ansible_name_module }} | shell:dig | Check DNS resolution on bastion host'
+  shell: >
+    {{ dig_binary_check.stdout }} -p 5353 registry.{{ coredns_zone }} | grep ANSWER | head -1 | awk '{print $7}' | cut -d ',' -f1
+  when:
+    - dig_binary_check is defined
+    - dig_binary_check.rc is defined
+    - dig_binary_check.rc == 0
+    - dig_binary_check.stdout is defined
+    - dig_binary_check.stdout != ''
+    - coredns_container_ipaddr is defined
+    - coredns_container_ipaddr.rc is defined
+    - coredns_container_ipaddr.rc == 0
+    - coredns_container_ipaddr.stdout is defined
+    - coredns_container_ipaddr.stdout != ''
+  register: dig_dns_host_check

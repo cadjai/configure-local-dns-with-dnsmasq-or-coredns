@@ -1,0 +1,23 @@
+$TTL 1W  
+$ORIGIN	{{ local_zone }}.
+@                 IN  SOA     ns1.{{ local_zone }}.  root (
+                                  {{ db_time }}     ; Serial
+                                  1d             ; Refresh
+                                  2h             ; Retry
+                                  4w             ; Expire
+                                  1W)            ; Minimum TTL
+                 IN  NS         ns1.{{ local_zone }}.
+                 IN  MX 10      smtp.{{ local_zone }}.
+ns1.{{ local_zone }}.        IN  A       {{ local_dns_host_ip }} 
+smtp.{{ local_zone }}.       IN  A       {{ local_dns_host_ip }} 
+registry.{{ local_zone }}.   IN  A       {{ local_dns_host_ip }} 
+haproxy.{{ local_zone }}.    IN  A       {{ local_dns_host_ip }} 
+lb.{{ local_zone }}.         IN  A       {{ local_dns_host_ip }} 
+api.{{ local_zone }}.        IN  A       {{ local_dns_host_ip }} 
+api-int.{{ local_zone }}.    IN  A       {{ local_dns_host_ip }} 
+*.apps.{{ local_zone }}.     IN  A       {{ local_dns_host_ip }} 
+{% if use_static_ips is defined and use_static_ips | bool and masters | default([], true) | length > 0 %}
+{% for item in masters %}
+{{ master_instance_prefix }}{{ loop.index0 }}.{{ local_zone }}.        IN  A       {{ item }}
+{% endfor %}
+{% endif %}

@@ -1,0 +1,74 @@
+---
+- name: '{{ ansible_name_module }} | ansible.builtin.systemd | Ensure NetworkManager is running'
+  ansible.builtin.systemd:
+    state: started
+    name: NetworkManager
+  register: running_netmgr
+
+- name: '{{ ansible_name_module }} | yum | Ensure dnsmasq package is installed'
+  yum:
+    name: 
+      - dnsmasq
+      - python3-netaddr
+    state: present
+  register: dnsmasq_installed 
+
+- name: '{{ ansible_name_module }} | template | Copy dnsmasq NetworkManager config to staging location'
+  template:
+    src: "templates/00-use-dnsmasq.conf.j2"
+    dest: "/etc/NetworkManager/conf.d/00-use-dnsmasq.conf"
+    force: yes
+  register: dnsmasq_nm_conf_copied
+
+- name: '{{ ansible_name_module }} | template | Copy dnsmasq config files to staging location'
+  template:
+    src: "templates/{{ item }}"
+    dest: "/etc/NetworkManager/dnsmasq.d/{{ item.split('.j2')[0] }}"
+    force: yes
+  loop:
+    - 00-upstreamdns-config.conf.j2
+    - 01-localdns-config.conf.j2 
+  register: dnsmasq_conf_copied
+
+- name: '{{ ansible_name_module }} | overwrite default /etc/hosts file if applicable'
+  when:
+    - config_hosts is defined
+    - config_hosts | bool
+  block:
+    - name: '{{ ansible_name_module }} | template | Copy dnsmasq config files to staging location'
+      template:
+        src: "templates/02-add-hosts-config.conf.j2"
+        dest: "/etc/NetworkManager/dnsmasq.d/02-add-hosts-config.conf"
+        force: yes
+      register: dnsmasq_addhosts_conf_copied
+
+    - name: '{{ ansible_name_module }} | template | Copy /etc/hosts config to staging location'
+      template:
+        src: "templates/etc-hosts.j2"
+        dest: "/etc/hosts"
+        force: yes
+      register: etc_hosts_copied
+
+- name: '{{ ansible_name_module }} | Configure DHCP for DNSMASQ if applicable'
+  when:
+    - config_dhcp is defined
+    - config_dhcp | bool
+  block:
+    - name: '{{ ansible_name_module }} | template | Copy DHCP config files to staging location'
+      template:
+        src: "templates/03-localdns-dhcp-config.conf.j2"
+        dest: "/etc/NetworkManager/dnsmasq.d/03-localdns-dhcp-config.conf"
+        force: yes
+      register: dhcp_config_copied
+
+- name: '{{ ansible_name_module }} | ansible.builtin.systemd | Restart NetworkManager service'
+  ansible.builtin.systemd:
+    state: restarted
+    name: NetworkManager
+  register: netmgr_restarted
+
+- name: '{{ ansible_name_module }} | debug | Print NetworkManager restart output'
+  debug:
+    var: netmgr_restarted
+    verbosity: 2
+
