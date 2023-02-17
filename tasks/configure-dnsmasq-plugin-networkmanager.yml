@@ -10,6 +10,7 @@
     name: 
       - dnsmasq
       - python3-netaddr
+      - firewalld
     state: present
   register: dnsmasq_installed 
 
@@ -61,6 +62,14 @@
         force: yes
       register: dhcp_config_copied
 
+    - name: '{{ ansible_name_module }} | ansible.posix.firewalld | Open firewalld for dhcp service'
+      ansible.posix.firewalld:
+        service: dhcp
+        permanent: true
+        state: enabled
+      register: dhcp_port_opened
+
+
 - name: '{{ ansible_name_module }} | ansible.builtin.systemd | Restart NetworkManager service'
   ansible.builtin.systemd:
     state: restarted
@@ -71,4 +80,11 @@
   debug:
     var: netmgr_restarted
     verbosity: 2
+
+- name: '{{ ansible_name_module }} | ansible.posix.firewalld | Open firewalld for dns service'
+  ansible.posix.firewalld:
+    service: dns
+    permanent: true
+    state: enabled
+  register: dns_port_opened
 
